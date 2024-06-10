@@ -7,16 +7,18 @@ public class dbServices{
     //MySqlConnection conn = null; // this will store the connection which will be persistent 
     MySqlConnection connPrimary = null; // this will store the connection which will be persistent 
     MySqlConnection connReadOnly = null;
+    private readonly string _connectionString;
 
     public  dbServices() // constructor
     {
         //_appsettings=appsettings;
         connectDBPrimary();
         connectDBReadOnly();
+         _connectionString = appsettings["db:connStrPrimary"];
     }
 
 
-        private void connectDBPrimary()
+    private void connectDBPrimary()
     {   
         
         try
@@ -95,13 +97,45 @@ public class dbServices{
     }
 
 
-// for updation query 
+//update start 
 
 
-    public int ExecuteUpdateSQL(string sql, MySqlParameter[] parameters)
+    public async Task<(int affectedRows, List<Dictionary<string, object>>)> executeSQLForUpdate(string query, MySqlParameter[] parameters)
+    {
+        using var connection = new MySqlConnection(_connectionString);
+        using var command = new MySqlCommand(query, connection);
+        command.Parameters.AddRange(parameters);
+
+        await connection.OpenAsync();
+        var affectedRows = await command.ExecuteNonQueryAsync();
+
+        return (affectedRows, new List<Dictionary<string, object>>());
+    }
+
+
+//update end
+
+// Delete start
+
+    public async Task<(int affectedRows, List<Dictionary<string, object>>)> executeSQLForDelete(string query, MySqlParameter[] parameters)
+    {
+        using var connection = new MySqlConnection(_connectionString);
+        using var command = new MySqlCommand(query, connection);
+        command.Parameters.AddRange(parameters);
+
+        await connection.OpenAsync();
+        var affectedRows = await command.ExecuteNonQueryAsync();
+
+        return (affectedRows, new List<Dictionary<string, object>>());
+    }
+
+
+// Delete end
+
+    public List<Dictionary<string, object>[]> ExecuteSQLName(string query, MySqlParameter[] parameters)
     {
         MySqlTransaction transaction = null;
-        int rowsAffected = 0;
+        List<Dictionary<string, object>[]> allTables = new List<Dictionary<string, object>[]>();
 
         try
         {
@@ -110,126 +144,87 @@ public class dbServices{
 
             transaction = connPrimary.BeginTransaction();
 
-            var cmd = connPrimary.CreateCommand();
-            cmd.CommandText = sql;
-            if (parameters != null)
-                cmd.Parameters.AddRange(parameters);
+            using (MySqlCommand cmd = new MySqlCommand(query, connPrimary))
+            {
+                if (parameters != null)
+                    cmd.Parameters.AddRange(parameters);
 
-            rowsAffected = cmd.ExecuteNonQuery();
+                using (MySqlDataReader reader = cmd.ExecuteReader())
+                {
+                    do
+                    {
+                        List<Dictionary<string, object>> tblRows = new List<Dictionary<string, object>>();
+
+                        while (reader.Read())
+                        {
+                            Dictionary<string, object> values = new Dictionary<string, object>();
+
+                            for (int i = 0; i < reader.FieldCount; i++)
+                            {
+                                string columnName = reader.GetName(i);
+                                object columnValue = reader.GetValue(i);
+                                values[columnName] = columnValue;
+                            }
+
+                            tblRows.Add(values);
+                        }
+
+                        allTables.Add(tblRows.ToArray());
+                    } while (reader.NextResult());
+                }
+            }
 
             transaction.Commit();
         }
         catch (Exception ex)
         {
-            Console.Write(ex.Message);
-            transaction.Rollback();
-            return -1; // Return -1 to indicate error
+            Console.WriteLine(ex.Message);
+            if (transaction != null)
+                transaction.Rollback();
+            return null;
         }
-        finally
-        {
-            connPrimary.Close(); // Close the connection
-        }
+        
 
-        Console.Write("Database Operation Completed Successfully");
-        return rowsAffected;
+        Console.WriteLine("Database Operation Completed Successfully");
+        return allTables;
     }
-//update end
-
-
-
-    public List<Dictionary<string, object>[]> ExecuteSQLName(string query, MySqlParameter[] parameters)
-{
-    MySqlTransaction transaction = null;
-    List<Dictionary<string, object>[]> allTables = new List<Dictionary<string, object>[]>();
-
-    try
-    {
-        if (connPrimary == null || connPrimary.State == 0)
-            connectDBPrimary();
-
-        transaction = connPrimary.BeginTransaction();
-
-        using (MySqlCommand cmd = new MySqlCommand(query, connPrimary))
-        {
-            if (parameters != null)
-                cmd.Parameters.AddRange(parameters);
-
-            using (MySqlDataReader reader = cmd.ExecuteReader())
-            {
-                do
-                {
-                    List<Dictionary<string, object>> tblRows = new List<Dictionary<string, object>>();
-
-                    while (reader.Read())
-                    {
-                        Dictionary<string, object> values = new Dictionary<string, object>();
-
-                        for (int i = 0; i < reader.FieldCount; i++)
-                        {
-                            string columnName = reader.GetName(i);
-                            object columnValue = reader.GetValue(i);
-                            values[columnName] = columnValue;
-                        }
-
-                        tblRows.Add(values);
-                    }
-
-                    allTables.Add(tblRows.ToArray());
-                } while (reader.NextResult());
-            }
-        }
-
-        transaction.Commit();
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine(ex.Message);
-        if (transaction != null)
-            transaction.Rollback();
-        return null;
-    }
-    
-
-    Console.WriteLine("Database Operation Completed Successfully");
-    return allTables;
-}
 
     public int ExecuteInsertAndGetLastId(string sq, MySqlParameter[] prms)
-{
-    MySqlTransaction trans = null;
-    int lastInsertedId = -1;
-
-    try
     {
-        if (connPrimary == null || connPrimary.State == 0)
-            connectDBPrimary();
+        MySqlTransaction trans = null;
+        int lastInsertedId = -1;
 
-        trans = connPrimary.BeginTransaction();
+        try
+        {
+            if (connPrimary == null || connPrimary.State == 0)
+                connectDBPrimary();
 
-        var cmd = connPrimary.CreateCommand();
-        cmd.CommandText = sq;
-        if (prms != null)
-            cmd.Parameters.AddRange(prms);
+            trans = connPrimary.BeginTransaction();
 
-        // Execute the INSERT query
-        cmd.ExecuteNonQuery();
+            var cmd = connPrimary.CreateCommand();
+            cmd.CommandText = sq;
+            if (prms != null)
+                cmd.Parameters.AddRange(prms);
 
-        // Get the last inserted ID
-        cmd.CommandText = "SELECT LAST_INSERT_ID();";
-        lastInsertedId = Convert.ToInt32(cmd.ExecuteScalar());
+            // Execute the INSERT query
+            cmd.ExecuteNonQuery();
 
+            // Get the last inserted ID
+            cmd.CommandText = "SELECT LAST_INSERT_ID();";
+            lastInsertedId = Convert.ToInt32(cmd.ExecuteScalar());
+
+        }
+        catch (Exception ex)
+        {
+            Console.Write(ex.Message);
+            trans.Rollback();
+        }
+
+        trans.Commit();
+        connPrimary.Close();
+
+        return lastInsertedId;
     }
-    catch (Exception ex)
-    {
-        Console.Write(ex.Message);
-        trans.Rollback();
-    }
-
-    trans.Commit();
-    connPrimary.Close();
-
-    return lastInsertedId;
-}
 
 
     public List<List<Object[]>>  executeSQLpcmdb(string sq,MySqlParameter[] prms) // this will return the database response the last partameter is to allow selection of connectio id

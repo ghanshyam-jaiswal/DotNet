@@ -1,106 +1,75 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using MySql.Data.MySqlClient;
+using Microsoft.Extensions.Logging;
 
 namespace COMMON_PROJECT_STRUCTURE_API.services
 {
-    public class update
+    public class Update
     {
-        dbServices ds = new dbServices();
+        private readonly dbServices _dbServices;
+        private readonly ILogger<Update> _logger;
 
-        public async Task<responseData> Update(requestData rData)
+        public Update(dbServices dbServices, ILogger<Update> logger)
         {
-            responseData resData = new responseData();
-
-            try
-            {
-                // Your update query
-                var query = @"UPDATE pc_student.giganexus 
-                           SET name = @Name, mobile = @Mobile, email = @Email, state = @State, pin = @Pin 
-                           WHERE id = @Id;";
-
-                // Your parameters
-                MySqlParameter[] myParam = new MySqlParameter[]
-                {
-                    new MySqlParameter("@Id", rData.addInfo["id"]),
-                    new MySqlParameter("@Name", rData.addInfo["name"]),
-                    new MySqlParameter("@Mobile", rData.addInfo["mobile"]),
-                    new MySqlParameter("@Email", rData.addInfo["email"]),
-                    new MySqlParameter("@State", rData.addInfo["state"]),
-                    new MySqlParameter("@Pin", rData.addInfo["pin"])
-                };
-
-                // Condition to execute the update query
-                bool shouldExecuteUpdate = true;
-
-                if (shouldExecuteUpdate)
-                {
-                    int rowsAffected = ds.ExecuteUpdateSQL(query, myParam);
-
-                    if (rowsAffected > 0)
-                    {
-                        resData.rData["rMessage"] = "UPDATE SUCCESSFULLY.";
-                    }
-                    else
-                    {
-                        resData.rData["rMessage"] = "No rows affected. Update failed.";
-                    }
-                }
-                else
-                {
-                    resData.rData["rMessage"] = "Condition not met. Update query not executed.";
-                }
-            }
-            catch (Exception ex)
-            {
-                resData.rData["rMessage"] = "Exception occurred: " + ex.Message;
-            }
-            return resData;
+            _dbServices = dbServices;
+            _logger = logger;
         }
 
-        public async Task<responseData> Delete(requestData rData)
+        public async Task<string> UpdateByEmailAndPassword(requestData rData)
         {
-            responseData resData = new responseData();
-
             try
             {
-                // Your delete query
-                var query = @"DELETE FROM pc_student.giganexus WHERE id = @Id;";
-
-                // Your parameters
-                MySqlParameter[] myParam = new MySqlParameter[]
+                if (!rData.addInfo.ContainsKey("email") || !rData.addInfo.ContainsKey("password"))
                 {
-                    new MySqlParameter("@Id", rData.addInfo["id"])
+                    return "Invalid request data";
+                }
+
+                var email = rData.addInfo["email"].ToString();
+                var password = rData.addInfo["password"].ToString();
+
+                var query = @"UPDATE pc_student.RepaireStore 
+                              SET first_name = @FIRST_NAME, 
+                                  last_name = @LAST_NAME, 
+                                  contact = @CONTACT, 
+                                  street_address1 = @STREET_ADDRESS1, 
+                                  street_address2 = @STREET_ADDRESS2, 
+                                  city = @CITY, 
+                                  state = @STATE, 
+                                  pincode = @PINCODE, 
+                                  country = @COUNTRY
+                              WHERE email = @EMAIL AND password = @PASSWORD";
+
+                MySqlParameter[] parameters = new MySqlParameter[]
+                {
+                    new MySqlParameter("@FIRST_NAME", rData.addInfo["first_name"]),
+                    new MySqlParameter("@LAST_NAME", rData.addInfo["last_name"]),
+                    new MySqlParameter("@EMAIL", email),
+                    new MySqlParameter("@PASSWORD", password),
+                    new MySqlParameter("@CONTACT", rData.addInfo["contact"]),
+                    new MySqlParameter("@STREET_ADDRESS1", rData.addInfo["street_address1"]),
+                    new MySqlParameter("@STREET_ADDRESS2", rData.addInfo["street_address2"]),
+                    new MySqlParameter("@CITY", rData.addInfo["city"]),
+                    new MySqlParameter("@STATE", rData.addInfo["state"]),
+                    new MySqlParameter("@PINCODE", rData.addInfo["pincode"]),
+                    new MySqlParameter("@COUNTRY", rData.addInfo["country"])
                 };
 
-                // Condition to execute the delete query
-                bool shouldExecuteDelete = true;
-
-                if (shouldExecuteDelete)
+                var (affectedRows, _) = await _dbServices.executeSQLForUpdate(query, parameters);
+                if (affectedRows > 0)
                 {
-                    int rowsAffected = ds.ExecuteUpdateSQL(query, myParam);
-
-                    if (rowsAffected > 0)
-                    {
-                        resData.rData["rMessage"] = "DELETE SUCCESSFULLY.";
-                    }
-                    else
-                    {
-                        resData.rData["rMessage"] = "No rows affected. Delete failed.";
-                    }
+                    return "Update successful";
                 }
                 else
                 {
-                    resData.rData["rMessage"] = "Condition not met. Delete query not executed.";
+                    return "No record found with the given email and password";
                 }
             }
             catch (Exception ex)
             {
-                resData.rData["rMessage"] = "Exception occurred: " + ex.Message;
+                _logger.LogError($"Exception during update operation: {ex.Message}");
+                return $"An error occurred: {ex.Message}";
             }
-            return resData;
         }
     }
 }

@@ -15,8 +15,10 @@ var builder = WebHost.CreateDefaultBuilder(args)
         IConfiguration appsettings = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build();
         s.AddSingleton<login>();
         s.AddSingleton<signup>();
-        s.AddSingleton<update>();
+        s.AddSingleton<Update>();
         s.AddSingleton<LoginService>();
+        s.AddSingleton<delete>();
+        s.AddSingleton<dbServices>();
 
 
         s.AddAuthorization();
@@ -45,7 +47,8 @@ var builder = WebHost.CreateDefaultBuilder(args)
             var login = e.ServiceProvider.GetRequiredService<login>();
             var loginService = e.ServiceProvider.GetRequiredService<LoginService>();
             var signup = e.ServiceProvider.GetRequiredService<signup>();
-            var update = e.ServiceProvider.GetRequiredService<update>();
+            var update = e.ServiceProvider.GetRequiredService<Update>();
+            var deleteService = e.ServiceProvider.GetRequiredService<delete>();
 
             e.MapPost("login",
             [AllowAnonymous] async (HttpContext http) =>
@@ -55,21 +58,29 @@ var builder = WebHost.CreateDefaultBuilder(args)
                 if (rData.eventID == "1001") // update
                     await http.Response.WriteAsJsonAsync(await login.Login(rData));
             });
-            // e.MapPost("loginservice",
-            // [AllowAnonymous] async (HttpContext http) =>
-            // {
-            //     var body = await new StreamReader(http.Request.Body).ReadToEndAsync();
-            //     requestData rData = JsonSerializer.Deserialize<requestData>(body);
-            //     if (rData.eventID == "1001") // LoginService
-            //         await http.Response.WriteAsJsonAsync(await loginService.Authenticate(rData));
-            // });
+
+            e.MapPost("loginservice",
+            [AllowAnonymous] async (HttpContext http) =>
+            {
+                var body = await new StreamReader(http.Request.Body).ReadToEndAsync();
+                requestData rData = JsonSerializer.Deserialize<requestData>(body);
+
+                if (rData.eventID == "1001") // LoginService
+                {
+                    var email = rData.addInfo["email"].ToString();
+                    var password = rData.addInfo["password"].ToString();
+                    var result = await loginService.Authenticate(email, password);
+                    await http.Response.WriteAsJsonAsync(result);
+                }
+            });
+
 
             e.MapPost("signup",
             [AllowAnonymous] async (HttpContext http) =>
             {
                 var body = await new StreamReader(http.Request.Body).ReadToEndAsync();
                 requestData rData = JsonSerializer.Deserialize<requestData>(body);
-                if (rData.eventID == "1001") // update
+                if (rData.eventID == "1001") // signup
                     await http.Response.WriteAsJsonAsync(await signup.Signup(rData));
             });
 
@@ -79,7 +90,7 @@ var builder = WebHost.CreateDefaultBuilder(args)
                 var body = await new StreamReader(http.Request.Body).ReadToEndAsync();
                 requestData rData = JsonSerializer.Deserialize<requestData>(body);
                 if (rData.eventID == "1001") // update
-                    await http.Response.WriteAsJsonAsync(await update.Update(rData));
+                    await http.Response.WriteAsJsonAsync(await update.UpdateByEmailAndPassword(rData));
             });
 
             e.MapPost("delete",
@@ -87,8 +98,8 @@ var builder = WebHost.CreateDefaultBuilder(args)
             {
                 var body = await new StreamReader(http.Request.Body).ReadToEndAsync();
                 requestData rData = JsonSerializer.Deserialize<requestData>(body);
-                if (rData.eventID == "1002") // delete
-                    await http.Response.WriteAsJsonAsync(await update.Delete(rData));
+                if (rData.eventID == "1001") // delete
+                    await http.Response.WriteAsJsonAsync(await deleteService.Delete(rData));
             });
 
             IConfiguration appsettings = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build();
